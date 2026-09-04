@@ -1,0 +1,93 @@
+version: "4.1"
+name: EIDE_Template
+type: ARM
+deviceName: null
+packDir: null
+srcDirs:
+  - Lib
+  - Startup
+  - User
+  - HARDWARE
+  - FreeRTOS
+  - APP
+virtualFolder:
+  name: <virtual_root>
+  files: []
+  folders: []
+dependenceList: []
+outDir: build
+miscInfo:
+  uid: f061a9699f02aa6519f363e75e972cc4
+targets:
+  Debug:
+    cppPreprocessAttrs:
+      defineList:
+        - STM32F40_41xxx
+        - USE_STDPERIPH_DRIVER
+      incList:
+        - .
+        - Lib/CMSIS/CM3/CoreSupport
+        - Lib/CMSIS/CM3/DevicesSupport/ST/STM32F40X
+        - Lib/STM32F40x_StdPeriph_Driver/inc
+        - User
+        - HARDWARE
+        - FreeRTOS/inc
+        - APP
+      libList: []
+    excludeList:
+      - Lib/CMSIS/CM3/CoreSupport/core_cm3.c
+      - Lib/STM32F40x_StdPeriph_Driver/src/stm32f4xx_fmc.c
+      - Lib/STM32F40x_StdPeriph_Driver/src/stm32f4xx_dma2d.c
+      - Lib/STM32F40x_StdPeriph_Driver/src/stm32f4xx_ltdc.c
+      - Lib/STM32F40x_StdPeriph_Driver/src/stm32f4xx_sai.c
+    settings: {}
+    toolchain: GCC
+    toolchainConfigMap:
+      GCC:
+        archExtensions: ""
+        cpuType: Cortex-M4
+        floatingPointHardware: single
+        options:
+          version: 5
+          afterBuildTasks: []
+          asm-compiler:
+            ASM_FLAGS: ""
+          beforeBuildTasks: []
+          c/cpp-compiler:
+            CXX_FLAGS: ""
+            C_FLAGS: ""
+            language-c: c11
+            language-cpp: c++11
+            one-elf-section-per-data: true
+            one-elf-section-per-function: true
+            optimization: level-debug
+            warnings: all-warnings
+          global:
+            $float-abi-type: hard
+            misc-control: ""
+            not-use-syscalls: true
+            output-debug-info: enable
+            use-newlib-nano: true
+          linker:
+            $outputTaskExcludes:
+              - .bin
+            LD_FLAGS: ""
+            LIB_FLAGS: -lm
+            output-format: elf
+            remove-unused-input-sections: true
+        scatterFilePath: STM32F407xx_FLASH.ld
+        storageLayout:
+          RAM: []
+          ROM: []
+        useCustomScatterFile: true
+    uploadConfigMap:
+      JLink:
+        baseAddr: ""
+        bin: ./build/Debug/EIDE_Template.hex
+        cpuInfo:
+          cpuName: STM32F407ZE
+          vendor: ST
+        otherCmds: ""
+        proType: 1
+        speed: 8000
+    uploader: JLink
