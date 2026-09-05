@@ -14,6 +14,20 @@ EventGroupHandle_t xEventGroup;
 // 全局共享数据定义
 ParkingData_t g_ParkingData;
 
+void DHT11Task(void *pvParameters)
+{
+    static TickType_t last_dht_tick = 0;
+    while (1)
+    {
+        last_dht_tick = xTaskGetTickCount();
+        xSemaphoreTake(xMutex, portMAX_DELAY);
+        DHT11_Read_Float(&g_ParkingData.Temp, &g_ParkingData.Humi);
+        xSemaphoreGive(xMutex);
+
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+}
+
 void RFIDTask(void *pvParameters)
 {
     uint8_t status;
@@ -24,9 +38,9 @@ void RFIDTask(void *pvParameters)
     {
         // 1. 寻卡
         status = MFRC522_Request(PICC_REQIDL, uid);
-
         if (status == MI_OK)
         {
+            printf(" get card !\n");
             // 2. 防冲撞，获取完整 UID
             status = MFRC522_Anticoll(uid);
 
@@ -59,11 +73,13 @@ void RFIDTask(void *pvParameters)
                     {
                         if (!g_ParkingData.Spot[i].is_occupied)
                         {
-                            SG90_SetAngle(90);
+                            SG90_SetAngle(180);
                             Beep(100);
                             xSemaphoreTake(xMutex, portMAX_DELAY);
                             memcpy(g_ParkingData.Spot[i].card_uid, uid, 4);
                             g_ParkingData.Spot[i].is_occupied = 1;
+                            g_ParkingData.SpotNum = i;
+                            memcpy(g_ParkingData.last_uid, uid, 4);
                             g_ParkingData.EmptySpotNum--;
                             xSemaphoreGive(xMutex);
                             memcpy(MessageQueue.ID, uid, 4);
@@ -80,11 +96,13 @@ void RFIDTask(void *pvParameters)
                     //    - 蜂鸣器
                     //    - 释放车位，更新 g_ParkingData
                     //    - 队列通知 MQTT
-                    SG90_SetAngle(90);
+                    SG90_SetAngle(180);
                     Beep(100);
                     xSemaphoreTake(xMutex, portMAX_DELAY);
                     g_ParkingData.Spot[matched_spot].is_occupied = 0;
                     memset(g_ParkingData.Spot[matched_spot].card_uid, 0, 4);
+                    g_ParkingData.SpotNum = matched_spot;
+                    memcpy(g_ParkingData.last_uid, uid, 4);
                     g_ParkingData.EmptySpotNum++;
                     xSemaphoreGive(xMutex);
                     memcpy(MessageQueue.ID, uid, 4);
@@ -93,13 +111,20 @@ void RFIDTask(void *pvParameters)
                 }
 
                 // 6. 设置事件组标志位，通知 UI 刷新
-                xEventGroupSetBits(xEventGroup, EVT_RFID_CARD_DONE);
+                if (MessageQueue.IsEntre)
+                {
+                    xEventGroupSetBits(xEventGroup, EVT_CAR_ENTER);
+                }
+                else
+                {
+                    xEventGroupSetBits(xEventGroup, EVT_CAR_EXIT);
+                }
                 // 7. 延时等闸门关闭
                 // 写pdMS_TO_TICKS(3000)是为了提高移植性，保证延时3秒
                 // 如果参数写3000实际延时时间要根据configTICK_RATE_HZ宏来计算
                 // 比如100就是100hz一个tick10ms，3000个是30秒
                 vTaskDelay(pdMS_TO_TICKS(3000));
-                SG90_SetAngle(0); // 关闸
+                SG90_SetAngle(90); // 关闸
             }
         }
         vTaskDelay(pdMS_TO_TICKS(200)); // 防止重复读卡
@@ -108,11 +133,13 @@ void RFIDTask(void *pvParameters)
 
 void UITask(void *pvParameters)
 {
-    MessageQueue_t evt;
+
     while (1)
     {
-        EventBits_t bits = xEventGroupWaitBits(xEventGroup, EVT_RFID_CARD_DONE, pdTRUE, pdFALSE, 0);
-        if (bits & EVT_RFID_CARD_DONE)
+        // 检测到刷卡事件
+        
+        EventBits_t bits = xEventGroupWaitBits(xEventGroup, EVT_CAR_ENTER | EVT_CAR_EXIT, pdTRUE, pdFALSE, 0);
+        if (bits & EVT_CAR_ENTER)
         {
             // 判断车位是否已满
             if (g_ParkingData.EmptySpotNum == 0)
@@ -122,38 +149,95 @@ void UITask(void *pvParameters)
             else
             {
                 // 没满刷新状态
-                if (xQueueReceive(xQueue, &evt, pdMS_TO_TICKS(100)) == pdTRUE)
-                {
-                    if (evt.IsEntre) {
-                        OLED_Update_EnterPage(evt.ID , evt.SpotNum);
-                    }else {
-                        OLED_Update_ExitPage(evt.ID,1,1,1);
-                    } 
-                }
-               
+                OLED_Update_EnterPage(g_ParkingData.last_uid, g_ParkingData.SpotNum);
             }
         }
+        else if (bits & EVT_CAR_EXIT)
+        {
+            OLED_Update_ExitPage(g_ParkingData.last_uid, 1, 1, 1); // 计费任务没写先替代
+        }
+        // 默认刷新主界面
+    
+        OLED_Update_MainPage(g_ParkingData);
+ 
 
-        //读取dht11温湿度
-        
-
-
-
-        //刷新led指示车位
+        // 刷新led指示车位
         g_ParkingData.Spot[0].is_occupied ? Led1_On() : Led1_Off();
         g_ParkingData.Spot[1].is_occupied ? Led2_On() : Led2_Off();
         g_ParkingData.Spot[2].is_occupied ? Led3_On() : Led3_Off();
         g_ParkingData.Spot[3].is_occupied ? Led4_On() : Led4_Off();
 
-
-         vTaskDelay(pdMS_TO_TICKS(200)); 
+        vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
 
 void MQTTTask(void *pvParameters)
 {
+    MessageQueue_t evt;
+    char json_buf[128];
+    TickType_t last_ping = xTaskGetTickCount();
+    TickType_t last_report = xTaskGetTickCount();
+
+    g_ParkingData.WifiState = 0;
+    g_ParkingData.MqttState = 0;
     while (1)
     {
+        if (!g_ParkingData.WifiState || !g_ParkingData.MqttState)
+        {
+            g_ParkingData.WifiState = ESP8266_Connect_WIFI();
+            if (g_ParkingData.WifiState)
+            {
+                g_ParkingData.MqttState = MQTT_Start();
+            }
+            else
+            {
+                g_ParkingData.MqttState = 0;
+                vTaskDelay(pdMS_TO_TICKS(5000)); // 连接失败等5秒再重试
+                continue;                        // 跳过后面的业务逻辑
+            }
+        }
+
+        if (g_ParkingData.MqttState)
+        {
+            // 1. 检查队列有没有刷卡事件（等 100ms）
+            if (xQueueReceive(xQueue, &evt, pdMS_TO_TICKS(100)) == pdTRUE)
+            {
+                // 有事件！组装 JSON 上报
+                // 提示：用 sprintf 拼一个简单 JSON 字符串
+                // 例如: {"uid":"AABBCCDD","enter":1,"spot":2}
+                // 然后 MQTT_Publish(TOPIC_PARKING_ENTER 或 EXIT, json_buf);
+                if (evt.IsEntre)
+                {
+                    sprintf(json_buf, " \"uid\":\"%02X%02X%02X%02X\" , \"enter\":%d , \"spot\":%d ", evt.ID[0], evt.ID[1], evt.ID[2], evt.ID[3], evt.IsEntre, evt.SpotNum);
+                    MQTT_Publish(TOPIC_PARKING_ENTER, json_buf);
+                    memset(json_buf, 0, sizeof(json_buf));
+                }
+                else
+                {
+                    // 出场要拼接计费信息
+                }
+            }
+            // 2. 心跳（每 50 秒）
+            if ((xTaskGetTickCount() - last_ping) >= pdMS_TO_TICKS(50000))
+            {
+                last_ping = xTaskGetTickCount();
+                MQTT_PingReq();
+            }
+            // 3. 定时上报车位状态（每 30 秒）
+            if ((xTaskGetTickCount() - last_report) >= pdMS_TO_TICKS(30000))
+            {
+                last_report = xTaskGetTickCount();
+                // 读 g_ParkingData，组装状态 JSON，Publish
+                sprintf(json_buf, "\"temp\":%d.%d,\"humi\":%d.%d,\"empty\":%d",
+                        (int)g_ParkingData.Temp, ((int)(g_ParkingData.Temp * 10)) % 10,
+                        (int)g_ParkingData.Humi, ((int)(g_ParkingData.Humi * 10)) % 10,
+                        g_ParkingData.EmptySpotNum);
+
+                MQTT_Publish(TOPIC_PARKING_STATUS, json_buf);
+                memset(json_buf, 0, sizeof(json_buf));
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -172,7 +256,7 @@ void InitTask(void *pvParameters)
     HC05_Init();
     Key_Init();
     LED_Init();
-    MFRC522_GPIO_Init();
+    MFRC522_Init();
     RTC_Config();
     USART1_Config(115200);
     USART3_Config(115200);
@@ -191,13 +275,16 @@ void InitTask(void *pvParameters)
     taskENTER_CRITICAL();
 
     // 创建 UI 任务
-    xTaskCreate(UITask, "UITask", 256, NULL, 1, &UITaskHandle);
+    xTaskCreate(UITask, "UITask", 256, NULL, 4, &UITaskHandle);
 
     // 创建 RFID 刷卡与道闸任务
-    xTaskCreate(RFIDTask, "RFIDTask", 256, NULL, 3, &RFIDTaskHandle);
+    xTaskCreate(RFIDTask, "RFIDTask", 256, NULL, 1, &RFIDTaskHandle);
 
     // 创建 MQTT 网络通信任务
-    xTaskCreate(MQTTTask, "MQTTTask", 512, NULL, 2, &MQTTTaskHandle);
+    xTaskCreate(MQTTTask, "MQTTTask", 512, NULL, 3, &MQTTTaskHandle);
+
+    // 创建 DHT11 任务
+    //xTaskCreate(DHT11Task, "DHT11Task", 128, NULL, 1, NULL);
 
     // 4. 必须先退出临界区！
     taskEXIT_CRITICAL();

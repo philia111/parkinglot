@@ -3,6 +3,7 @@
 
 #include "AT24C02.h"
 #include "ESP8266.h"
+#include "esp8266_mqtt.h"
 #include "FreeRTOS.h"
 #include "HC05.h"
 #include "MFRC522.h"
@@ -23,9 +24,11 @@
 #include "event_groups.h"
 #include <string.h>
 #include "OledShowBoard.h"
+#include <stdio.h>
 
 //事件标志位
-#define EVT_RFID_CARD_DONE   (1 << 0)   // bit0: 刷卡完成，UI请刷新
+#define EVT_CAR_ENTER   (1 << 0)  
+#define EVT_CAR_EXIT    (1 << 1)
 
 
 
@@ -56,6 +59,7 @@ void InitTask(void *pvParameters);
 void RFIDTask(void *pvParameters);
 void UITask(void *pvParameters);
 void MQTTTask(void *pvParameters);
+void DHT11Task(void *pvParameters);
 
 
 #endif

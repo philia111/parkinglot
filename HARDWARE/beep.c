@@ -39,7 +39,7 @@ void Beep_Init()
  */
 void Beep_On()
 {
-   
+   GPIO_SetBits(GPIOF, GPIO_Pin_8);
 }
 
 /**

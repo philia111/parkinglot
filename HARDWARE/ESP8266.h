@@ -4,8 +4,8 @@
 #include "stm32f4xx.h"
 
 
-#define WIFI_SSID       "MEIZU 21"
-#define WIFI_PSWD		"12345678"
+#define WIFI_SSID       "2302"
+#define WIFI_PSWD		"13638065697"
 
 uint8_t ESP8266_Send_Cmd(char* cmd , const char* rsp, u32 timeoutms);
 void ESP8266_Init(void);

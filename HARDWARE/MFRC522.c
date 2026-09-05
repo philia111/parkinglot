@@ -157,9 +157,9 @@ void MFRC522_Init(void)
     MFRC522_WriteReg(MFRC522_REG_T_PRESCALER, 0x3E); /* TPreScaler = TModeReg[3:0]:TPrescalerReg */
     MFRC522_WriteReg(MFRC522_REG_T_RELOAD_L, 30);    /* 定时器重载值低字节 */
     MFRC522_WriteReg(MFRC522_REG_T_RELOAD_H, 0);     /* 定时器重载值高字节 */
-    MFRC522_WriteReg(MFRC522_REG_TX_ASK, 0x40); /* 100%ASK调制 */
-    MFRC522_WriteReg(MFRC522_REG_MODE, 0x3D);   /* CRC初始值0x6363 */
-    MFRC522_AntennaOn(); /* 开启天线 */
+    MFRC522_WriteReg(MFRC522_REG_TX_ASK, 0x40);      /* 100%ASK调制 */
+    MFRC522_WriteReg(MFRC522_REG_MODE, 0x3D);        /* CRC初始值0x6363 */
+    MFRC522_AntennaOn();                             /* 开启天线 */
 }
 /*==========================================================================
  * MFRC522和ISO14443卡通信
@@ -194,7 +194,7 @@ u8 MFRC522_ToCard(u8 command, u8 *sendData, u8 sendLen, u8 *backData, u16 *backL
     MFRC522_WriteReg(MFRC522_REG_COM_I_EN, irqEn | 0x80); /* 允许中断请求 */
     MFRC522_ClearBitMask(MFRC522_REG_COM_IRQ, 0x80);      /* 清除所有中断请求标志位 */
     MFRC522_SetBitMask(MFRC522_REG_FIFO_LEVEL, 0x80);     /* FlushBuffer=1, FIFO初始化 */
-    MFRC522_WriteReg(MFRC522_REG_COMMAND, PCD_IDLE); /* 空闲命令，取消当前命令 */
+    MFRC522_WriteReg(MFRC522_REG_COMMAND, PCD_IDLE);      /* 空闲命令，取消当前命令 */
     /* 向FIFO中写入数据 */
     for (i = 0; i < sendLen; i++)
     {

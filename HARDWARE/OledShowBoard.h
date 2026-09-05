@@ -13,7 +13,9 @@ typedef struct {
 //全局状态
 typedef struct{
     Spot_t Spot[4];
+    uint8_t  SpotNum;
     uint8_t EmptySpotNum;
+    uint8_t last_uid[4];   // 最近一次刷卡的UID（给UI显示用）
     float Temp;
     float Humi;
     bool WifiState;

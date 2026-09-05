@@ -6,19 +6,19 @@
  * @brief 中断服务函数，如果串口1收到数据，则转发给电脑
  *
  */
-void USART1_IRQHandler(void)
-{
-    uint8_t data;
-    // 判断中断是否发生
-    if (USART_GetITStatus(USART1, USART_IT_RXNE) == SET)
-    {
-        // 从USART1中接收一个字节
-        data = USART_ReceiveData(USART1); // 一次只能接收一个字节
+// void USART1_IRQHandler(void)
+// {
+//     uint8_t data;
+//     // 判断中断是否发生
+//     if (USART_GetITStatus(USART1, USART_IT_RXNE) == SET)
+//     {
+//         // 从USART1中接收一个字节
+//         data = USART_ReceiveData(USART1); // 一次只能接收一个字节
 
-        // 把接收到的数据转发出去
-        USART_SendData(USART1, data);
-    }
-}
+//         // 把接收到的数据转发出去
+//         // USART_SendData(USART1, data);
+//     }
+// }
 
 /**
  * @brief 串口1初始化函数
@@ -66,7 +66,7 @@ void USART1_Config(u32 baud)
     NVIC_Init(&NVIC_InitStructure);
 
     // 选择USART1的中断源，接收到数据则触发中断
-    USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);
+    //USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);
 
     // 打开串口
     USART_Cmd(USART1, ENABLE);
@@ -84,7 +84,8 @@ int _write(int file, char *ptr, int len)
     for (int i = 0; i < len; i++)
     {
         USART_SendData(USART1, (uint8_t)ptr[i]);
-        while (USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET);
+        while (USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET)
+            ;
     }
     return len;
 }

@@ -30,8 +30,8 @@ void OLED_Update_MainPage(ParkingData_t g_ParkingData)
     // 第3行：网络状态 (例如 "WiFi:OK MQTT:OK ")
     // 注意留足空格覆盖掉以前旧的字符
     sprintf(buf, "WF:%s  MQ:%s  ", 
-            g_ParkingData.MqttState ? "OK" : "NO",
-            g_ParkingData.WifiState ? "OK" : "NO");
+            g_ParkingData.WifiState ? "OK" : "NO",
+            g_ParkingData.MqttState ? "OK" : "NO");
     OLED_ShowString(3, 1, buf);
 
     // 第4行：显示实时对时后的 RTC 时钟时间 (提取 HH:MM:SS 部分)

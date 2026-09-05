@@ -3,6 +3,8 @@
 #include "delay.h"
 #include <stdio.h>
 #include <string.h>
+#include "FreeRTOS.h"
+#include "task.h"
 
 /**
  * @brief ESP8266串口发送指令函数（轮询等待响应版本）
@@ -30,7 +32,7 @@ uint8_t ESP8266_Send_Cmd(char *cmd, const char *rsp, u32 timeoutms)
     // 3. 轮询等待响应（每100ms检查一次）
     while (elapsed < timeoutms)
     {
-        delay_ms(100);
+        vTaskDelay(pdMS_TO_TICKS(100));
         elapsed += 100;
 
         // 确保缓冲区以'\0'结尾再搜索
@@ -73,9 +75,10 @@ void ESP8266_Init(void)
     uint8_t i;
 
     // 1. 退出可能的透传模式
-    delay_ms(500);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    
     USART3_SendString("+++");
-    delay_ms(1000);
+    vTaskDelay(pdMS_TO_TICKS(1000));
 
     // 2. 清空缓冲区
     u3_recvcnt = 0;
@@ -84,7 +87,7 @@ void ESP8266_Init(void)
     // 3. 硬复位 ESP8266（给模块一个干净的起点）
     printf("[ESP8266] Resetting module...\r\n");
     USART3_SendString("AT+RST\r\n");
-    delay_ms(3000);  // RST后等3秒让模块完成重启
+     vTaskDelay(pdMS_TO_TICKS(3000));  // RST后等3秒让模块完成重启
 
     // 清空重启期间收到的所有boot信息
     u3_recvcnt = 0;
@@ -99,7 +102,7 @@ void ESP8266_Init(void)
             printf("[ESP8266] AT handshake OK!\r\n");
             break;
         }
-        delay_ms(500);
+         vTaskDelay(pdMS_TO_TICKS(500));
     }
     if (i >= 5)
     {
@@ -175,11 +178,11 @@ void ESP8266_Reset(void)
  */
 void ESP8266_Exit_Transparent_Transmission(void)
 {
-    delay_ms(1000);
+     vTaskDelay(pdMS_TO_TICKS(1000));
     USART3_SendString("+++");
-    delay_ms(1000);
+     vTaskDelay(pdMS_TO_TICKS(1000));
     // 退出透传模式，发送下一条AT指令要间隔1秒
-    delay_ms(1000);
+     vTaskDelay(pdMS_TO_TICKS(1000));
 }
 
 /**
@@ -298,7 +301,7 @@ uint8_t ESP8266_Get_Network_Time(char *datetime_buf)
     char *time_ptr = NULL;
     while (delay_count < 5000)
     {
-        delay_ms(100);
+         vTaskDelay(pdMS_TO_TICKS(100));
         delay_count += 100;
         
         // 确保缓冲区以'\0'结尾
