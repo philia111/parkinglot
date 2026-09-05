@@ -28,9 +28,9 @@ void OLED_Update_MainPage(ParkingData_t g_ParkingData);
 void OLED_Update_SpotFull(void);
 
 // 入场提示界面
-void OLED_Update_EnterPage(const char *uid, uint8_t slot);
+void OLED_Update_EnterPage(const uint8_t *uid, uint8_t slot);
 
 // 出场结算界面
-void OLED_Update_ExitPage(const char *uid, uint8_t hours, uint8_t mins, uint8_t fee);
+void OLED_Update_ExitPage(const uint8_t *uid, uint8_t hours, uint8_t mins, uint8_t fee);
 
 #endif

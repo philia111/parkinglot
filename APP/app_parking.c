@@ -145,6 +145,7 @@ void UITask(void *pvParameters)
             if (g_ParkingData.EmptySpotNum == 0)
             {
                 OLED_Update_SpotFull();
+                vTaskDelay(pdMS_TO_TICKS(1000)); //阻塞一下看清信息
             }
             else
             {
@@ -157,10 +158,8 @@ void UITask(void *pvParameters)
             OLED_Update_ExitPage(g_ParkingData.last_uid, 1, 1, 1); // 计费任务没写先替代
         }
         // 默认刷新主界面
-    
         OLED_Update_MainPage(g_ParkingData);
  
-
         // 刷新led指示车位
         g_ParkingData.Spot[0].is_occupied ? Led1_On() : Led1_Off();
         g_ParkingData.Spot[1].is_occupied ? Led2_On() : Led2_Off();
@@ -175,11 +174,16 @@ void MQTTTask(void *pvParameters)
 {
     MessageQueue_t evt;
     char json_buf[128];
+    char timebuf[20];
     TickType_t last_ping = xTaskGetTickCount();
     TickType_t last_report = xTaskGetTickCount();
 
     g_ParkingData.WifiState = 0;
     g_ParkingData.MqttState = 0;
+
+    // 网络初始化在后台运行，不阻塞系统前台启动
+    ESP8266_Init();
+
     while (1)
     {
         if (!g_ParkingData.WifiState || !g_ParkingData.MqttState)
@@ -187,6 +191,24 @@ void MQTTTask(void *pvParameters)
             g_ParkingData.WifiState = ESP8266_Connect_WIFI();
             if (g_ParkingData.WifiState)
             {
+                // 1. WiFi连接成功且处于AT模式时授时（仅需同步一次）
+                static uint8_t s_time_synced = 0;
+                if (!s_time_synced)
+                {
+                    printf("[RTC] Syncing network time...\r\n");
+                    if (ESP8266_Get_Network_Time(timebuf))
+                    {
+                        RTC_Set_Calendar_String(timebuf);
+                        s_time_synced = 1;
+                        printf("[RTC] Time sync success: %s\r\n", timebuf);
+                    }
+                    else
+                    {
+                        printf("[RTC] Time sync failed!\r\n");
+                    }
+                }
+
+                // 2. 授时完成后，建立MQTT连接并进入透传
                 g_ParkingData.MqttState = MQTT_Start();
             }
             else
@@ -196,6 +218,7 @@ void MQTTTask(void *pvParameters)
                 continue;                        // 跳过后面的业务逻辑
             }
         }
+        
 
         if (g_ParkingData.MqttState)
         {
@@ -262,10 +285,7 @@ void InitTask(void *pvParameters)
     USART3_Config(115200);
     AT24C02_Config();
 
-    // 2. 初始化网络（耗时较长，依赖串口中断）
-    ESP8266_Init();
-
-    // 创建IPC对象
+    // 2. 创建IPC对象（不再在此阻塞等待网络初始化，让系统瞬时启动）
     xQueue = xQueueCreate(5, sizeof(MessageQueue_t));
 
     xMutex = xSemaphoreCreateMutex();
@@ -284,7 +304,7 @@ void InitTask(void *pvParameters)
     xTaskCreate(MQTTTask, "MQTTTask", 512, NULL, 3, &MQTTTaskHandle);
 
     // 创建 DHT11 任务
-    //xTaskCreate(DHT11Task, "DHT11Task", 128, NULL, 1, NULL);
+    xTaskCreate(DHT11Task, "DHT11Task", 128, NULL, 2, NULL);
 
     // 4. 必须先退出临界区！
     taskEXIT_CRITICAL();
