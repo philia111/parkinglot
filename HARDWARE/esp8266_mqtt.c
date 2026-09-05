@@ -377,3 +377,57 @@ uint8_t MQTT_Start(void)
 
     return 1;  /* 全部成功！ */
 }
+
+uint8_t MQTT_CheckMessage(char *topic_out, uint8_t topic_size, char *payload_out, uint8_t payload_size)
+{
+    if (u3_recvcnt < 5) {
+        return 0;
+    }
+
+    // 1. 扫描缓冲区，跳过前面的垃圾/应答字节（如心跳 0xD0），寻找 0x30
+    uint16_t start_idx = 0;
+    while (start_idx < u3_recvcnt && (u3_recvbuf[start_idx] & 0xF0) != 0x30)
+    {
+        start_idx++;
+    }
+
+    // 2. 如果找遍了都没有 0x30，说明里面全是心跳应答等无用数据，直接清空重置
+    if (start_idx >= u3_recvcnt)
+    {
+        u3_recvcnt = 0;
+        return 0;
+    }
+
+    // 3. 检查从 0x30 开始的剩余长度够不够解析基本报文头
+    if ((u3_recvcnt - start_idx) < 5)
+    {
+        return 0;
+    }
+
+    // 4. 解析报文长度与 Topic 长度
+    uint8_t remaining_len = u3_recvbuf[start_idx + 1];
+    uint16_t topic_len = (u3_recvbuf[start_idx + 2] << 8) | u3_recvbuf[start_idx + 3];
+
+    // 检查一整包报文是否收全（固定头 2 字节 + 剩余长度）
+    if ((u3_recvcnt - start_idx) < (2 + remaining_len))
+    {
+        return 0; // 还没接收完整，等待下一次
+    }
+
+    // 5. 提取 Topic
+    uint8_t copy_len = (topic_len < topic_size - 1) ? topic_len : topic_size - 1;
+    memcpy(topic_out, &u3_recvbuf[start_idx + 4], copy_len);
+    topic_out[copy_len] = '\0';
+
+    // 6. 提取 Payload
+    uint16_t payload_start = start_idx + 4 + topic_len;
+    uint16_t payload_len = remaining_len - 2 - topic_len;
+    copy_len = (payload_len < payload_size - 1) ? payload_len : payload_size - 1;
+    memcpy(payload_out, &u3_recvbuf[payload_start], copy_len);
+    payload_out[copy_len] = '\0';
+
+    // 7. 本包处理完毕，清空接收计数器
+    u3_recvcnt = 0;
+    memset(u3_recvbuf, 0, sizeof(u3_recvbuf));
+    return 1;
+}

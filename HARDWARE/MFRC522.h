@@ -5,31 +5,31 @@
 
 /*==========================================================================
  * 引脚定义 (模拟SPI)
- *   PB4  -> MISO (输入)
- *   PG6  -> SDA/CS (输出)
- *   PG7 -> RST (输出)
- *   PB3  -> SCK (输出)
- *   PB5  -> MOSI (输出)
+ *   PC7  -> SDA/CS (输出)
+ *   PC6  -> RST    (输出)
+ *   PC11 -> SCK    (输出)
+ *   PC8  -> MOSI   (输出)
+ *   PC9  -> MISO   (输入)
  *==========================================================================*/
 
-/* SDA/CS */
-#define RC522_CS_HIGH() GPIO_SetBits(GPIOG, GPIO_Pin_6)
-#define RC522_CS_LOW()  GPIO_ResetBits(GPIOG, GPIO_Pin_6)
+/* SDA/CS: PC7 */
+#define RC522_CS_HIGH() GPIO_SetBits(GPIOC, GPIO_Pin_7)
+#define RC522_CS_LOW()  GPIO_ResetBits(GPIOC, GPIO_Pin_7)
 
-/* RST */
-#define RC522_RST_HIGH() GPIO_SetBits(GPIOG, GPIO_Pin_7)
-#define RC522_RST_LOW()  GPIO_ResetBits(GPIOG, GPIO_Pin_7)
+/* RST: PC6 */
+#define RC522_RST_HIGH() GPIO_SetBits(GPIOC, GPIO_Pin_6)
+#define RC522_RST_LOW()  GPIO_ResetBits(GPIOC, GPIO_Pin_6)
 
-/* SCK */
-#define RC522_SCK_HIGH() GPIO_SetBits(GPIOB, GPIO_Pin_3)
-#define RC522_SCK_LOW()  GPIO_ResetBits(GPIOB, GPIO_Pin_3)
+/* SCK: PC11 */
+#define RC522_SCK_HIGH() GPIO_SetBits(GPIOC, GPIO_Pin_11)
+#define RC522_SCK_LOW()  GPIO_ResetBits(GPIOC, GPIO_Pin_11)
 
-/* MOSI */
-#define RC522_MOSI_HIGH() GPIO_SetBits(GPIOB, GPIO_Pin_5)
-#define RC522_MOSI_LOW()  GPIO_ResetBits(GPIOB, GPIO_Pin_5)
+/* MOSI: PC8 */
+#define RC522_MOSI_HIGH() GPIO_SetBits(GPIOC, GPIO_Pin_8)
+#define RC522_MOSI_LOW()  GPIO_ResetBits(GPIOC, GPIO_Pin_8)
 
-/* MISO */
-#define RC522_MISO_READ() GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_4)
+/* MISO: PC9 */
+#define RC522_MISO_READ() GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_9)
 
 /*==========================================================================
  * MFRC522 寄存器地址定义

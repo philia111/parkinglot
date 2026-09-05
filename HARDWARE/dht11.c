@@ -1,6 +1,6 @@
 #include "dht11.h"
-#include "delay.h"
 #include "FreeRTOS.h"
+#include "delay.h"
 #include "task.h"
 
 /* ---------------- 引脚模式与电平底层操作 ---------------- */
@@ -11,7 +11,7 @@
 static void DHT11_Mode_Out(void)
 {
     DHT11_PORT->MODER &= ~(3U << (9 * 2));
-    DHT11_PORT->MODER |=  (1U << (9 * 2)); // 01: 通用输出模式
+    DHT11_PORT->MODER |= (1U << (9 * 2)); // 01: 通用输出模式
 }
 
 /**
@@ -50,11 +50,11 @@ uint8_t DHT11_Init(void)
     RCC_AHB1PeriphClockCmd(DHT11_RCC, ENABLE);
 
     // 2. 配置引脚为推挽输出、上拉、高翻转速度
-    GPIO_InitStructure.GPIO_Pin   = DHT11_PIN;
-    GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_OUT;
+    GPIO_InitStructure.GPIO_Pin = DHT11_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
     GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_High_Speed;
-    GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_UP;
+    GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
     GPIO_Init(DHT11_PORT, &GPIO_InitStructure);
 
     // 3. 空闲状态：总线拉高释放

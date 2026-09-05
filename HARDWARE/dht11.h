@@ -42,7 +42,6 @@ bool DHT11_Read_Data(uint8_t *temp, uint8_t *humi);
 bool DHT11_Read_Float(float *temp, float *humi);
 
 // 兼容旧接口别名
-#define DHT11Init()          DHT11_Init()
 #define Read_DHT11Data(buf)  DHT11_Read_Raw(buf)
 
 #endif /* __DHT11_H */

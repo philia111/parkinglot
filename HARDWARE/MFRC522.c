@@ -7,32 +7,27 @@ extern void delay_ms(u32 ms);
 void MFRC522_GPIO_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStructure;
-    /* 开启时钟: GPIOB, GPIOG */
-    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB | RCC_AHB1Periph_GPIOG, ENABLE);
-    /* PB4 - MISO (输入，上拉) */
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4;
+    /* 开启时钟: GPIOC */
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE);
+
+    /* PC9 - MISO (输入，上拉) */
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
     GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
-    GPIO_Init(GPIOB, &GPIO_InitStructure);
-    /* PG6 - SDA/CS (推挽输出) */
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6;
+    GPIO_Init(GPIOC, &GPIO_InitStructure);
+
+    /* PC6 - RST, PC7 - SDA/CS, PC8 - MOSI, PC11 - SCK (推挽输出) */
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_7 | GPIO_Pin_8 | GPIO_Pin_11;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
     GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
-    GPIO_Init(GPIOG, &GPIO_InitStructure);
-    /* PB3 - SCK, PB5 - MOSI, PG7 - RST (推挽输出) */
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5 | GPIO_Pin_3;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
-    GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
-    GPIO_Init(GPIOB, &GPIO_InitStructure);
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7;
-    GPIO_Init(GPIOG, &GPIO_InitStructure);
-    /* 默认状态：CS高，SCK低 */
+    GPIO_Init(GPIOC, &GPIO_InitStructure);
+
+    /* 默认状态：CS高，SCK低，RST高 */
     RC522_CS_HIGH();
     RC522_SCK_LOW();
+    RC522_RST_HIGH();
 }
 /*==========================================================================
  * 模拟SPI: 发送一个字节 (MSB first, CPOL=0, CPHA=0)

@@ -1,10 +1,27 @@
 #include "app_parking.h"
+#include "AT24C02.h"
+#include "ESP8266.h"
+#include "HC05.h"
+#include "MFRC522.h"
+#include "USART1.h"
+#include "USART3.h"
+#include "beep.h"
+#include "dht11.h"
+#include "esp8266_mqtt.h"
+#include "key.h"
+#include "led.h"
+#include "oled.h"
+#include "rtc.h"
+#include "sg90.h"
+#include <stdio.h>
+#include <string.h>
 
 // 任务句柄定义
 TaskHandle_t InitTaskHandle = NULL;
 TaskHandle_t RFIDTaskHandle = NULL;
 TaskHandle_t UITaskHandle = NULL;
 TaskHandle_t MQTTTaskHandle = NULL;
+TaskHandle_t DHT11TaskHandle = NULL;
 
 // IPC对象定义
 QueueHandle_t xQueue;
@@ -16,15 +33,22 @@ ParkingData_t g_ParkingData;
 
 void DHT11Task(void *pvParameters)
 {
-    static TickType_t last_dht_tick = 0;
+    float temp = 0.0f;
+    float humi = 0.0f;
     while (1)
     {
-        last_dht_tick = xTaskGetTickCount();
-        xSemaphoreTake(xMutex, portMAX_DELAY);
-        DHT11_Read_Float(&g_ParkingData.Temp, &g_ParkingData.Humi);
-        xSemaphoreGive(xMutex);
+        // 1. 先进行单总线数据采集（不霸占互斥锁）
+        if (DHT11_Read_Float(&temp, &humi))
+        {
+            // 2. 仅在更新全局结构体时极短加锁（微秒级）
+            xSemaphoreTake(xMutex, portMAX_DELAY);
+            g_ParkingData.Temp = temp;
+            g_ParkingData.Humi = humi;
+            xSemaphoreGive(xMutex);
+        }
 
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        // 3. 每 3 秒采集一次温湿度（DHT11 要求间隔 >= 1~2 秒）
+        vTaskDelay(pdMS_TO_TICKS(3000));
     }
 }
 
@@ -43,88 +67,117 @@ void RFIDTask(void *pvParameters)
             printf(" get card !\n");
             // 2. 防冲撞，获取完整 UID
             status = MFRC522_Anticoll(uid);
-
             if (status == MI_OK)
             {
-                // ★ 拿到卡号了！接下来你要做：
-
                 // 3. 判断这张卡是"入场"还是"出场"
-                //    思路：遍历 g_ParkingData.spot[]，看有没有车位记录了这个UID
-                //    如果没有 → 入场；如果有 → 出场
                 int matched_spot = -1;
-                MessageQueue.IsEntre = 1; // 默认是入场
                 for (int i = 0; i < 4; i++)
                 {
-                    if (memcmp(g_ParkingData.Spot[i].card_uid, uid, 4) == 0)
+                    if (g_ParkingData.Spot[i].is_occupied &&
+                        memcmp(g_ParkingData.Spot[i].card_uid, uid, 4) == 0)
                     {
                         matched_spot = i;
-                        MessageQueue.IsEntre = 0;
+                        break;
                     }
                 }
-                // 4. 如果是入场：
-                //    - 找一个空车位
-                //    - 开闸 SG90_SetAngle(90)
-                //    - 蜂鸣器响一声
-                //    - 更新 g_ParkingData（要加锁！）
-                //    - 把事件塞进队列给 MQTT
-                if (MessageQueue.IsEntre)
+
+                if (matched_spot != -1)
                 {
-                    for (int i = 0; i < 4; i++)
-                    {
-                        if (!g_ParkingData.Spot[i].is_occupied)
-                        {
-                            SG90_SetAngle(180);
-                            Beep(100);
-                            xSemaphoreTake(xMutex, portMAX_DELAY);
-                            memcpy(g_ParkingData.Spot[i].card_uid, uid, 4);
-                            g_ParkingData.Spot[i].is_occupied = 1;
-                            g_ParkingData.SpotNum = i;
-                            memcpy(g_ParkingData.last_uid, uid, 4);
-                            g_ParkingData.EmptySpotNum--;
-                            xSemaphoreGive(xMutex);
-                            memcpy(MessageQueue.ID, uid, 4);
-                            MessageQueue.SpotNum = i;
-                            xQueueSend(xQueue, &MessageQueue, 0);
-                            break;
-                        }
-                    }
-                }
-                else
-                {
-                    // 5. 如果是出场：
-                    //    - 开闸
-                    //    - 蜂鸣器
-                    //    - 释放车位，更新 g_ParkingData
-                    //    - 队列通知 MQTT
+                    // 4. 出场流程：
+
+                    // 车费计算
+                    TickType_t parked_ticks = xTaskGetTickCount() - g_ParkingData.Spot[matched_spot].enter_tick;
+                    uint32_t parked_seconds = parked_ticks / configTICK_RATE_HZ;
+                    uint8_t fee = (parked_seconds + 2) / 3; // +2 是为了向上取整
+                    if (fee == 0)
+                        fee = 1; // 最低1元
+                    // 为了快速演示，一小时设定为30秒，一分钟为5秒
+                    uint8_t hours = parked_seconds / 30;
+                    uint8_t mins = (parked_seconds % 30) / 5;
+
                     SG90_SetAngle(180);
                     Beep(100);
                     xSemaphoreTake(xMutex, portMAX_DELAY);
+                    g_ParkingData.fee = fee;
+                    g_ParkingData.hours = hours;
+                    g_ParkingData.mins = mins;
+
                     g_ParkingData.Spot[matched_spot].is_occupied = 0;
                     memset(g_ParkingData.Spot[matched_spot].card_uid, 0, 4);
                     g_ParkingData.SpotNum = matched_spot;
                     memcpy(g_ParkingData.last_uid, uid, 4);
                     g_ParkingData.EmptySpotNum++;
                     xSemaphoreGive(xMutex);
+
+                    MessageQueue.IsEntre = 0;
                     memcpy(MessageQueue.ID, uid, 4);
                     MessageQueue.SpotNum = matched_spot;
                     xQueueSend(xQueue, &MessageQueue, 0);
-                }
 
-                // 6. 设置事件组标志位，通知 UI 刷新
-                if (MessageQueue.IsEntre)
-                {
-                    xEventGroupSetBits(xEventGroup, EVT_CAR_ENTER);
+                    // 通知 UI 刷新出场界面
+                    xEventGroupSetBits(xEventGroup, EVT_CAR_EXIT);
+
+                    // 延时等闸门关闭
+                    vTaskDelay(pdMS_TO_TICKS(3000));
+                    SG90_SetAngle(90); // 关闸
                 }
                 else
                 {
-                    xEventGroupSetBits(xEventGroup, EVT_CAR_EXIT);
+                    // 5. 入场流程：
+                    // 首先判断车位是否已满
+                    if (g_ParkingData.EmptySpotNum == 0)
+                    {
+                        // 车位已满：不开闸，长鸣警示，通知 UI 显示车位已满
+                        Beep(300);
+                        xEventGroupSetBits(xEventGroup, EVT_SPOT_FULL);
+                    }
+                    else
+                    {
+                        // 寻找空车位
+                        int allocated_spot = -1;
+                        for (int i = 0; i < 4; i++)
+                        {
+                            if (!g_ParkingData.Spot[i].is_occupied)
+                            {
+                                allocated_spot = i;
+                                break;
+                            }
+                        }
+
+                        if (allocated_spot != -1)
+                        {
+                            SG90_SetAngle(180);
+                            Beep(100);
+                            // 修改全局变量加锁保证数据安全
+                            xSemaphoreTake(xMutex, portMAX_DELAY);
+                            // 将当前UID写入数据结构体里
+                            memcpy(g_ParkingData.Spot[allocated_spot].card_uid, uid, 4);
+                            // 更新占用情况车位信息
+                            g_ParkingData.Spot[allocated_spot].is_occupied = 1;
+                            g_ParkingData.SpotNum = allocated_spot;
+
+                            memcpy(g_ParkingData.last_uid, uid, 4);
+                            // 记录入场时间方便计费
+                            g_ParkingData.Spot[allocated_spot].enter_tick = xTaskGetTickCount();
+                            // 减少车位
+                            g_ParkingData.EmptySpotNum--;
+                            // 解锁
+                            xSemaphoreGive(xMutex);
+
+                            MessageQueue.IsEntre = 1;
+                            memcpy(MessageQueue.ID, uid, 4);
+                            MessageQueue.SpotNum = allocated_spot;
+                            xQueueSend(xQueue, &MessageQueue, 0);
+
+                            // 通知 UI 刷新入场界面
+                            xEventGroupSetBits(xEventGroup, EVT_CAR_ENTER);
+
+                            // 延时等闸门关闭
+                            vTaskDelay(pdMS_TO_TICKS(3000));
+                            SG90_SetAngle(90); // 关闸
+                        }
+                    }
                 }
-                // 7. 延时等闸门关闭
-                // 写pdMS_TO_TICKS(3000)是为了提高移植性，保证延时3秒
-                // 如果参数写3000实际延时时间要根据configTICK_RATE_HZ宏来计算
-                // 比如100就是100hz一个tick10ms，3000个是30秒
-                vTaskDelay(pdMS_TO_TICKS(3000));
-                SG90_SetAngle(90); // 关闸
             }
         }
         vTaskDelay(pdMS_TO_TICKS(200)); // 防止重复读卡
@@ -133,33 +186,30 @@ void RFIDTask(void *pvParameters)
 
 void UITask(void *pvParameters)
 {
-
     while (1)
     {
-        // 检测到刷卡事件
-        
-        EventBits_t bits = xEventGroupWaitBits(xEventGroup, EVT_CAR_ENTER | EVT_CAR_EXIT, pdTRUE, pdFALSE, 0);
-        if (bits & EVT_CAR_ENTER)
+        // 检测到刷卡事件或车位已满事件
+        EventBits_t bits = xEventGroupWaitBits(xEventGroup,
+                                               EVT_CAR_ENTER | EVT_CAR_EXIT | EVT_SPOT_FULL,
+                                               pdTRUE, pdFALSE, 0);
+        if (bits & EVT_SPOT_FULL)
         {
-            // 判断车位是否已满
-            if (g_ParkingData.EmptySpotNum == 0)
-            {
-                OLED_Update_SpotFull();
-                vTaskDelay(pdMS_TO_TICKS(1000)); //阻塞一下看清信息
-            }
-            else
-            {
-                // 没满刷新状态
-                OLED_Update_EnterPage(g_ParkingData.last_uid, g_ParkingData.SpotNum);
-            }
+            OLED_Update_SpotFull();
+            vTaskDelay(pdMS_TO_TICKS(1500)); // 阻塞一下看清车满提示
+        }
+        else if (bits & EVT_CAR_ENTER)
+        {
+            // 只要收到入场事件，说明成功分配了车位（哪怕是最后一个车位），正常显示入场欢迎页
+            OLED_Update_EnterPage(g_ParkingData.last_uid, g_ParkingData.SpotNum);
         }
         else if (bits & EVT_CAR_EXIT)
         {
-            OLED_Update_ExitPage(g_ParkingData.last_uid, 1, 1, 1); // 计费任务没写先替代
+            OLED_Update_ExitPage(g_ParkingData.last_uid, g_ParkingData.hours, g_ParkingData.mins, g_ParkingData.fee); // 计费任务没写先替代
         }
+
         // 默认刷新主界面
         OLED_Update_MainPage(g_ParkingData);
- 
+
         // 刷新led指示车位
         g_ParkingData.Spot[0].is_occupied ? Led1_On() : Led1_Off();
         g_ParkingData.Spot[1].is_occupied ? Led2_On() : Led2_Off();
@@ -180,7 +230,7 @@ void MQTTTask(void *pvParameters)
 
     g_ParkingData.WifiState = 0;
     g_ParkingData.MqttState = 0;
-
+    uint8_t Subscribe = 0;
     // 网络初始化在后台运行，不阻塞系统前台启动
     ESP8266_Init();
 
@@ -218,10 +268,22 @@ void MQTTTask(void *pvParameters)
                 continue;                        // 跳过后面的业务逻辑
             }
         }
-        
 
         if (g_ParkingData.MqttState)
         {
+            if (!Subscribe)
+            {
+                MQTT_Subscribe(TOPIC_PARKING_ENTER, 1);
+                MQTT_Subscribe(TOPIC_PARKING_EXIT, 1);
+                MQTT_Subscribe(TOPIC_PARKING_STATUS, 1);
+                MQTT_Subscribe(TOPIC_PARKING_CMD, 0);
+                Subscribe = 1;
+
+                // 订阅完成后，清掉 SUBACK 报文的残留数据
+                u3_recvcnt = 0;
+                memset(u3_recvbuf, 0, sizeof(u3_recvbuf));
+            }
+
             // 1. 检查队列有没有刷卡事件（等 100ms）
             if (xQueueReceive(xQueue, &evt, pdMS_TO_TICKS(100)) == pdTRUE)
             {
@@ -238,6 +300,9 @@ void MQTTTask(void *pvParameters)
                 else
                 {
                     // 出场要拼接计费信息
+                    sprintf(json_buf, " \"uid\":\"%02X%02X%02X%02X\" , \"enter\":%d , \"spot\":%d , \"fee\":%d ", evt.ID[0], evt.ID[1], evt.ID[2], evt.ID[3], evt.IsEntre, evt.SpotNum, g_ParkingData.fee);
+                    MQTT_Publish(TOPIC_PARKING_EXIT, json_buf);
+                    memset(json_buf, 0, sizeof(json_buf));
                 }
             }
             // 2. 心跳（每 50 秒）
@@ -260,6 +325,27 @@ void MQTTTask(void *pvParameters)
                 memset(json_buf, 0, sizeof(json_buf));
             }
         }
+
+        // 4. 检查是否收到云端指令
+        char topic[32], payload[64];
+        if (MQTT_CheckMessage(topic, sizeof(topic), payload, sizeof(payload)))
+        {
+            printf("[MQTT] Recv: topic=%s payload=%s\r\n", topic, payload);
+
+            // 根据 payload 内容执行动作
+            if (strcmp(topic, TOPIC_PARKING_CMD) == 0)
+            {
+                if (strstr(payload, "open"))
+                {
+                    // 远程开闸
+                    SG90_SetAngle(180);
+                    vTaskDelay(pdMS_TO_TICKS(3000));
+                    SG90_SetAngle(90);
+                }
+                // 可以继续加其他指令...
+            }
+        }
+
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
@@ -275,9 +361,9 @@ void InitTask(void *pvParameters)
     SG90_Init();
     OLED_Init();
     Beep_Init();
-    DHT11Init();
-    HC05_Init();
-    Key_Init();
+    DHT11_Init();
+    // HC05_Init();
+    // Key_Init();
     LED_Init();
     MFRC522_Init();
     RTC_Config();
@@ -303,8 +389,10 @@ void InitTask(void *pvParameters)
     // 创建 MQTT 网络通信任务
     xTaskCreate(MQTTTask, "MQTTTask", 512, NULL, 3, &MQTTTaskHandle);
 
-    // 创建 DHT11 任务
-    xTaskCreate(DHT11Task, "DHT11Task", 128, NULL, 2, NULL);
+    // 创建 DHT11 温湿度独立任务（栈大小 256 字 = 1024 字节，充足安全）
+    xTaskCreate(DHT11Task, "DHT11Task", 256, NULL, 2, &DHT11TaskHandle);
+
+    // 按键任务
 
     // 4. 必须先退出临界区！
     taskEXIT_CRITICAL();

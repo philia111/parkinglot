@@ -1,34 +1,20 @@
 #ifndef _APP_PARKING_H_
 #define _APP_PARKING_H_
 
-#include "AT24C02.h"
-#include "ESP8266.h"
-#include "esp8266_mqtt.h"
+
 #include "FreeRTOS.h"
-#include "HC05.h"
-#include "MFRC522.h"
-#include "USART1.h"
-#include "USART3.h"
-#include "beep.h"
-#include "dht11.h"
-#include "key.h"
-#include "led.h"
-#include "oled.h"
 #include "queue.h"
-#include "rtc.h"
-#include "sg90.h"
-#include "delay.h"
-#include "stm32f4xx.h"
 #include "task.h"
 #include "semphr.h"
 #include "event_groups.h"
-#include <string.h>
+
 #include "OledShowBoard.h"
-#include <stdio.h>
+
 
 //事件标志位
 #define EVT_CAR_ENTER   (1 << 0)  
 #define EVT_CAR_EXIT    (1 << 1)
+#define EVT_SPOT_FULL   (1 << 2)
 
 
 
@@ -38,6 +24,7 @@ typedef struct{
     bool IsEntre;
     uint8_t SpotNum;
     uint8_t IsFull;
+
 }MessageQueue_t ;
 
 //任务句柄
@@ -45,6 +32,7 @@ extern TaskHandle_t InitTaskHandle;
 extern TaskHandle_t RFIDTaskHandle;
 extern TaskHandle_t UITaskHandle;
 extern TaskHandle_t MQTTTaskHandle;
+extern TaskHandle_t DHT11TaskHandle;
 
 //IPC对象声明
 extern QueueHandle_t xQueue;

@@ -54,7 +54,7 @@ void OLED_Update_SpotFull(void)
     // 清屏或者直接用空格覆盖
     OLED_Clear(); 
     
-    OLED_ShowString(1, 1, ">>> SPOT FULL <<<");
+    OLED_ShowString(1, 1, ">> SPOT FULL <<");
     
 }
 

@@ -49,6 +49,9 @@ uint8_t MQTT_Subscribe(const char *topic, uint8_t qos);
  */
 uint8_t MQTT_Publish(const char *topic, const char *message);
 
+uint8_t MQTT_CheckMessage(char *topic_out, uint8_t topic_size, char *payload_out, uint8_t payload_size);
+
+
 /**
  * @brief 发送心跳包，告诉Broker"我还活着"
  * @return 1成功(收到PINGRESP) 0失败
